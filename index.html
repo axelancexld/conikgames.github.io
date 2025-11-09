@@ -1,346 +1,750 @@
-<html lang="en"><script>
-    window[Symbol.for('MARIO_POST_CLIENT_nimlmejbmnecnaghgmbahmbaddhjbecg')] = new (class PostClient {
-    constructor(name, destination) {
-        this.name = name;
-        this.destination = destination;
-        this.serverListeners = {};
-        this.bgRequestsListeners = {};
-        this.bgEventsListeners = {};
-        window.addEventListener('message', (message) => {
-            const data = message.data;
-            const isNotForMe = !(data.destination && data.destination === this.name);
-            const hasNotEventProp = !data.event;
-            if (isNotForMe || hasNotEventProp) {
-                return;
-            }
-            if (data.event === 'MARIO_POST_SERVER__BG_RESPONSE') {
-                const response = data.args;
-                if (this.hasBgRequestListener(response.requestId)) {
-                    try {
-                        this.bgRequestsListeners[response.requestId](response.response);
-                    }
-                    catch (e) {
-                        console.log(e);
-                    }
-                    delete this.bgRequestsListeners[response.requestId];
-                }
-            }
-            else if (data.event === 'MARIO_POST_SERVER__BG_EVENT') {
-                const response = data.args;
-                if (this.hasBgEventListener(response.event)) {
-                    try {
-                        this.bgEventsListeners[data.id](response.payload);
-                    }
-                    catch (e) {
-                        console.log(e);
-                    }
-                }
-            }
-            else if (this.hasServerListener(data.event)) {
-                try {
-                    this.serverListeners[data.event](data.args);
-                }
-                catch (e) {
-                    console.log(e);
-                }
-            }
-            else {
-                console.log(`event not handled: ${data.event}`);
-            }
-        });
-    }
-    emitToServer(event, args) {
-        const id = this.generateUIID();
-        const message = {
-            args,
-            destination: this.destination,
-            event,
-            id,
-        };
-        window.postMessage(message, location.origin);
-        return id;
-    }
-    emitToBg(bgEventName, args) {
-        const requestId = this.generateUIID();
-        const request = { bgEventName, requestId, args };
-        this.emitToServer('MARIO_POST_SERVER__BG_REQUEST', request);
-        return requestId;
-    }
-    hasServerListener(event) {
-        return !!this.serverListeners[event];
-    }
-    hasBgRequestListener(requestId) {
-        return !!this.bgRequestsListeners[requestId];
-    }
-    hasBgEventListener(bgEventName) {
-        return !!this.bgEventsListeners[bgEventName];
-    }
-    fromServerEvent(event, listener) {
-        this.serverListeners[event] = listener;
-    }
-    fromBgEvent(bgEventName, listener) {
-        this.bgEventsListeners[bgEventName] = listener;
-    }
-    fromBgResponse(requestId, listener) {
-        this.bgRequestsListeners[requestId] = listener;
-    }
-    generateUIID() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-            const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
-    }
-})('MARIO_POST_CLIENT_nimlmejbmnecnaghgmbahmbaddhjbecg', 'MARIO_POST_SERVER_nimlmejbmnecnaghgmbahmbaddhjbecg')</script><script>
-    const hideMyLocation = new (class HideMyLocation {
-    constructor(clientKey) {
-        this.clientKey = clientKey;
-        this.watchIDs = {};
-        this.client = window[Symbol.for(clientKey)];
-        const getCurrentPosition = navigator.geolocation.getCurrentPosition;
-        const watchPosition = navigator.geolocation.watchPosition;
-        const clearWatch = navigator.geolocation.clearWatch;
-        const self = this;
-        navigator.geolocation.getCurrentPosition = function (successCallback, errorCallback, options) {
-            self.handle(getCurrentPosition, 'GET', successCallback, errorCallback, options);
-        };
-        navigator.geolocation.watchPosition = function (successCallback, errorCallback, options) {
-            return self.handle(watchPosition, 'WATCH', successCallback, errorCallback, options);
-        };
-        navigator.geolocation.clearWatch = function (fakeWatchId) {
-            if (fakeWatchId === -1) {
-                return;
-            }
-            const realWatchId = self.watchIDs[fakeWatchId];
-            delete self.watchIDs[fakeWatchId];
-            return clearWatch.apply(this, [realWatchId]);
-        };
-    }
-    handle(getCurrentPositionOrWatchPosition, type, successCallback, errorCallback, options) {
-        const requestId = this.client.emitToBg('HIDE_MY_LOCATION__GET_LOCATION');
-        let fakeWatchId = this.getRandomInt(0, 100000);
-        this.client.fromBgResponse(requestId, (response) => {
-            if (response.enabled) {
-                if (response.status === 'SUCCESS') {
-                    const position = this.map(response);
-                    successCallback(position);
-                }
-                else {
-                    const error = this.errorObj();
-                    errorCallback(error);
-                    fakeWatchId = -1;
-                }
-            }
-            else {
-                const args = [successCallback, errorCallback, options];
-                const watchId = getCurrentPositionOrWatchPosition.apply(navigator.geolocation, args);
-                if (type === 'WATCH') {
-                    this.watchIDs[fakeWatchId] = watchId;
-                }
-            }
-        });
-        if (type === 'WATCH') {
-            return fakeWatchId;
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Fredo Games - Monster Dating Simulator</title>
+    <link rel="icon" href="img/favicon.ico" type="image/x-icon">
+    <meta property="og:title" content="Fredo Games">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://feridogames.com/">
+    <meta property="og:image" content="https://feridogames.com/favicon.ico">
+    <meta property="og:description" content="As a newcomer to the seaside town of Longhope, you find yourself surrounded by monsters of urban mythology.">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-    }
-    map(response) {
-        return {
-            coords: {
-                accuracy: 20,
-                altitude: null,
-                altitudeAccuracy: null,
-                heading: null,
-                latitude: response.latitude,
-                longitude: response.longitude,
-                speed: null,
-            },
-            timestamp: Date.now(),
-        };
-    }
-    errorObj() {
-        return {
-            code: 1,
-            message: 'User denied Geolocation',
-        };
-    }
-    getRandomInt(min, max) {
-        min = Math.ceil(min);
-        max = Math.floor(max);
-        return Math.floor(Math.random() * (max - min + 1)) + min;
-    }
-})('MARIO_POST_CLIENT_nimlmejbmnecnaghgmbahmbaddhjbecg')
-  </script><head><meta http-equiv="content-type" content="text/html;charset=utf-8">
 
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="X-UA-Compatible" content="ie=edge">
-<title>Fredo Games</title>
-<script src="/cdn-cgi/apps/head/APSaaArCPfJkHOeKa694-AQJTSQ.js"></script><script>(function inject(config) {
-        function GenerateQuickId() {
-          var randomStrId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-          return randomStrId.substring(0, 22);
+        :root {
+            --primary: #f367b5;
+            --secondary: #8de7ed;
+            --dark: #0e0914;
+            --darker: #080509;
+            --accent: #ff6b9d;
         }
-        ;
-        function SendXHRCandidate(requestMethod_, url_, type_, content_) {
-          try {
-            var id = 'detector';
-            var mes = {
-              posdMessageId: 'PANELOS_MESSAGE',
-              posdHash: GenerateQuickId(),
-              type: 'VIDEO_XHR_CANDIDATE',
-              from: id,
-              to: id.substring(0, id.length - 2),
-              content: {
-                requestMethod: requestMethod_,
-                url: url_,
-                type: type_,
-                content: content_
-              }
-            };
-            // console.log(`posd_log: ${new Date().toLocaleString()} DEBUG [${this.id}] : (PosdVideoTrafficDetector) sending`, mes);
-            window.postMessage(mes);
-          } catch (e) {}
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, var(--darker) 0%, var(--dark) 50%, #1a0f2e 100%);
+            color: #fff;
+            overflow-x: hidden;
+            scroll-behavior: smooth;
         }
-        ;
-        var open = XMLHttpRequest.prototype.open;
-        XMLHttpRequest.prototype.open = function () {
-          this.requestMethod = arguments[0];
-          open.apply(this, arguments);
-        };
-        var send = XMLHttpRequest.prototype.send;
-        XMLHttpRequest.prototype.send = function () {
-          var onreadystatechange = this.onreadystatechange;
-          this.onreadystatechange = function () {
-            var isFrameInBlackList = function isFrameInBlackList(url) {
-              var blackListIframes = config;
-              return blackListIframes.some(function (e) {
-                return url.includes(e);
-              });
-            };
-            if (this.readyState === 4 && !isFrameInBlackList(this.responseURL)) {
-              setTimeout(SendXHRCandidate(this.requestMethod, this.responseURL, this.getResponseHeader('content-type'), this.response), 0);
-            }
-            if (onreadystatechange) {
-              return onreadystatechange.apply(this, arguments);
-            }
-          };
-          return send.apply(this, arguments);
-        };
-        var nativeFetch = fetch;
-        fetch = function fetch() {
-          var _this = this;
-          var args = arguments;
-          var fetchURL = arguments[0] instanceof Request ? arguments[0].url : arguments[0];
-          var fetchMethod = arguments[0] instanceof Request ? arguments[0].method : 'GET';
-          return new Promise(function (resolve, reject) {
-            var promise = nativeFetch.apply(_this, args);
-            promise.then(function (response) {
-              if (response.body instanceof ReadableStream) {
-                var nativeJson = response.json;
-                response.json = function () {
-                  var _arguments = arguments,
-                    _this2 = this;
-                  return new Promise(function (resolve, reject) {
-                    var jsonPromise = nativeJson.apply(_this2, _arguments);
-                    jsonPromise.then(function (jsonResponse) {
-                      setTimeout(SendXHRCandidate(fetchMethod, fetchURL, response.headers.get('content-type'), JSON.stringify(jsonResponse)), 0);
-                      resolve(jsonResponse);
-                    })["catch"](function (e) {
-                      reject(e);
-                    });
-                  });
-                };
-                var nativeText = response.text;
-                response.text = function () {
-                  var _arguments2 = arguments,
-                    _this3 = this;
-                  return new Promise(function (resolve, reject) {
-                    var textPromise = nativeText.apply(_this3, _arguments2);
-                    textPromise.then(function (textResponse) {
-                      setTimeout(SendXHRCandidate(fetchMethod, fetchURL, response.headers.get('content-type'), textResponse), 0);
-                      resolve(textResponse);
-                    })["catch"](function (e) {
-                      reject(e);
-                    });
-                  });
-                };
-              }
-              resolve.apply(this, arguments);
-            })["catch"](function () {
-              reject.apply(this, arguments);
-            });
-          });
-        };
-      })(["facebook.com/","twitter.com/","youtube-nocookie.com/embed/","//vk.com/","//www.vk.com/","//linkedin.com/","//www.linkedin.com/","//instagram.com/","//www.instagram.com/","//www.google.com/recaptcha/api2/","//hangouts.google.com/webchat/","//www.google.com/calendar/","//www.google.com/maps/embed","spotify.com/","soundcloud.com/","//player.vimeo.com/","//disqus.com/","//tgwidget.com/","//js.driftt.com/","friends2follow.com","/widget","login","//video.bigmir.net/","blogger.com","//smartlock.google.com/","//keep.google.com/","/web.tolstoycomments.com/","moz-extension://","chrome-extension://","/auth/","//analytics.google.com/","adclarity.com","paddle.com/checkout","hcaptcha.com","recaptcha.net","2captcha.com","accounts.google.com","www.google.com/shopping/customerreviews","buy.tinypass.com"]);</script><link href="img/favicon.ico" rel="icon" type="image/x-icon">
-<link rel="stylesheet" href="style.css">
-<meta property="og:title" content="Fredo Games">
-<meta property="og:type" content="website">
-<meta property="og:url" content="https://feridogames.com/">
-<meta property="og:image" content="https://feridogames.com/favicon.ico">
-<meta property="og:description" content="As a newcomer to the seaside town of Longhope, you find yourself surrounded by monsters of urban mythology. Haunted by the feline specter Taro, your journey begins alongside Jamie, the wingless Jersey devil, and Atlas, the little Mothman.">
-<body bis_register="W3sibWFzdGVyIjp0cnVlLCJleHRlbnNpb25JZCI6Im5pbWxtZWpibW5lY25hZ2hnbWJhaG1iYWRkaGpiZWNnIiwiYWRibG9ja2VyU3RhdHVzIjp7IkRJU1BMQVkiOiJkaXNhYmxlZCIsIkZBQ0VCT09LIjoiZGlzYWJsZWQiLCJUV0lUVEVSIjoiZGlzYWJsZWQiLCJSRURESVQiOiJkaXNhYmxlZCJ9LCJ2ZXJzaW9uIjoiMS45LjA0Iiwic2NvcmUiOjEwOTA0fV0=">
-<div class="navbar" bis_skin_checked="1">
-<div class="navbar-content" bis_skin_checked="1">
-<div class="brand" bis_skin_checked="1">
-<img src="img/favicon.ico" alt="logo">
-<h2>Fredo Games</h2>
-</div>
-<div class="routes" bis_skin_checked="1">
-<a href="index.html">Home</a>
-<a href="#">Discord (Coming Soon)</a>
-</div>
-</div>
-</div>
-<div class="base" bis_skin_checked="1">
-<div class="header" bis_skin_checked="1">
-<div class="banner" bis_skin_checked="1">
-<img src="img/banner.png" alt="banner">
-</div>
-<div class="description" bis_skin_checked="1">
-<h3>
-As a newcomer to the seaside town of Longhope, you find yourself surrounded by
-monsters of urban mythology. Haunted by the feline specter Taro, your journey begins alongside
-Jamie, the wingless Jersey devil, and Atlas, the little Mothman.
-</h3>
-<br>
-<h3>
-Fredo Games will include at least FIVE monsters, and will be updated with new content every
-few months!
-</h3>
-</div>
-</div>
-<div class="divider" bis_skin_checked="1"></div>
-<div class="main" bis_skin_checked="1">
-<div class="logs" bis_skin_checked="1">
-<div class="title" bis_skin_checked="1">Development logs</div>
-<ul>
-<li>Preview of Cold Moon</li>
-<li>Fredo Games Chapter 1 Info</li>
-<li>Casting call - Part 2</li>
-<li>Boss Fright update</li>
-</ul>
-</div>
-<div class="downloads" bis_skin_checked="1">
-<div class="title" bis_skin_checked="1">Download</div>
-<ul>
-<li><a href="https://bit.ly/cunikrushgamesetup">Windows v1.6</a></li>
-<li>Mac Unavailable</li>
-<li>Linux Unavailable</li>
-</ul>
-</div>
-</div>
-<div class="divider" bis_skin_checked="1"></div>
-<div class="footer" bis_skin_checked="1">
-<h3 class="title">Screenshots of the game</h3>
-<div class="screenshots" bis_skin_checked="1">
-<img src="img/screenshot-1.png" alt="screenshot-1">
-<img src="img/screenshot-2.png" alt="screenshot-2">
-<img src="img/screenshot-3.png" alt="screenshot-3">
-</div>
-</div>
-</div>
-<div class="footer-end" bis_skin_checked="1">
-<h4>Made with ❤️ by Fredo Games</h4>
-</div>
 
+        /* Animated Background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(243, 103, 181, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(141, 231, 237, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
 
-</body></html>
+        /* Navbar */
+        .navbar {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background: rgba(14, 9, 20, 0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 1rem 0;
+        }
+
+        .navbar-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+
+        .brand:hover {
+            transform: scale(1.05);
+        }
+
+        .brand img {
+            height: 50px;
+            border-radius: 12px;
+            box-shadow: 0 0 20px rgba(243, 103, 181, 0.5);
+        }
+
+        .brand h2 {
+            font-size: 1.8rem;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 700;
+        }
+
+        .routes {
+            display: flex;
+            gap: 2.5rem;
+            align-items: center;
+        }
+
+        .routes a {
+            color: #fff;
+            font-weight: 500;
+            text-decoration: none;
+            position: relative;
+            transition: color 0.3s ease;
+        }
+
+        .routes a::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            transition: width 0.3s ease;
+        }
+
+        .routes a:hover {
+            color: var(--primary);
+        }
+
+        .routes a:hover::after {
+            width: 100%;
+        }
+
+        /* Hero Section */
+        .hero {
+            position: relative;
+            max-width: 1400px;
+            margin: 4rem auto;
+            padding: 0 2rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+        }
+
+        .hero-content h1 {
+            font-size: 3.5rem;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(135deg, #fff, var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            line-height: 1.2;
+            animation: fadeInUp 1s ease;
+        }
+
+        .hero-content p {
+            font-size: 1.2rem;
+            line-height: 1.8;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 2rem;
+            animation: fadeInUp 1s ease 0.2s both;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 1.5rem;
+            animation: fadeInUp 1s ease 0.4s both;
+        }
+
+        .btn {
+            padding: 1rem 2.5rem;
+            border-radius: 50px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            display: inline-block;
+            cursor: pointer;
+            border: none;
+            font-size: 1rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: #fff;
+            box-shadow: 0 10px 30px rgba(243, 103, 181, 0.4);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(243, 103, 181, 0.6);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(10px);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: var(--secondary);
+        }
+
+        .hero-image {
+            position: relative;
+            animation: fadeInRight 1s ease;
+        }
+
+        .hero-image img {
+            width: 100%;
+            border-radius: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Features Section */
+        .features {
+            max-width: 1400px;
+            margin: 6rem auto;
+            padding: 0 2rem;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 3rem;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .feature-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 2rem;
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-10px);
+            border-color: var(--primary);
+            box-shadow: 0 20px 40px rgba(243, 103, 181, 0.3);
+        }
+
+        .feature-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .feature-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: var(--secondary);
+        }
+
+        .feature-card p {
+            color: rgba(255, 255, 255, 0.7);
+            line-height: 1.6;
+        }
+
+        /* Characters Section */
+        .characters {
+            max-width: 1400px;
+            margin: 6rem auto;
+            padding: 0 2rem;
+        }
+
+        .characters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+        }
+
+        .character-card {
+            background: linear-gradient(135deg, rgba(243, 103, 181, 0.1), rgba(141, 231, 237, 0.1));
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 2rem;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .character-card:hover {
+            transform: scale(1.05);
+            border-color: var(--primary);
+            box-shadow: 0 20px 50px rgba(243, 103, 181, 0.4);
+        }
+
+        .character-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+
+        .character-card h3 {
+            font-size: 1.8rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .character-card .subtitle {
+            color: var(--secondary);
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+
+        /* Downloads Section */
+        .downloads-section {
+            max-width: 1400px;
+            margin: 6rem auto;
+            padding: 4rem 2rem;
+            text-align: center;
+            background: linear-gradient(135deg, rgba(243, 103, 181, 0.1), rgba(141, 231, 237, 0.1));
+            border-radius: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .downloads-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .download-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 2rem;
+            transition: all 0.3s ease;
+        }
+
+        .download-card.available:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary);
+        }
+
+        .download-card.unavailable {
+            opacity: 0.5;
+        }
+
+        .platform-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        /* Screenshots Gallery */
+        .gallery {
+            max-width: 1400px;
+            margin: 6rem auto;
+            padding: 0 2rem;
+        }
+
+        .screenshots-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .screenshot {
+            position: relative;
+            overflow: hidden;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+
+        .screenshot img {
+            width: 100%;
+            display: block;
+            transition: transform 0.5s ease;
+        }
+
+        .screenshot:hover img {
+            transform: scale(1.1);
+        }
+
+        .screenshot::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(243, 103, 181, 0.3), rgba(141, 231, 237, 0.3));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .screenshot:hover::after {
+            opacity: 1;
+        }
+
+        /* Development Logs */
+        .dev-logs {
+            max-width: 1400px;
+            margin: 6rem auto;
+            padding: 0 2rem;
+        }
+
+        .logs-list {
+            list-style: none;
+            margin-top: 2rem;
+        }
+
+        .log-item {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 1.5rem 2rem;
+            margin-bottom: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .log-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--primary);
+            transform: translateX(10px);
+        }
+
+        .log-icon {
+            font-size: 1.5rem;
+        }
+
+        /* Newsletter */
+        .newsletter {
+            max-width: 800px;
+            margin: 6rem auto;
+            padding: 4rem 2rem;
+            text-align: center;
+            background: linear-gradient(135deg, rgba(243, 103, 181, 0.2), rgba(141, 231, 237, 0.2));
+            border-radius: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .newsletter h2 {
+            margin-bottom: 1rem;
+        }
+
+        .newsletter p {
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 2rem;
+        }
+
+        .newsletter-form {
+            display: flex;
+            gap: 1rem;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .newsletter-form input {
+            flex: 1;
+            padding: 1rem 1.5rem;
+            border-radius: 50px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            color: #fff;
+            font-size: 1rem;
+        }
+
+        .newsletter-form input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            margin-top: 6rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .footer-content {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .social-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .social-links a {
+            color: #fff;
+            font-size: 1.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .social-links a:hover {
+            color: var(--primary);
+            transform: translateY(-3px);
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInRight {
+            from {
+                opacity: 0;
+                transform: translateX(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero {
+                grid-template-columns: 1fr;
+                text-align: center;
+            }
+
+            .hero-content h1 {
+                font-size: 2.5rem;
+            }
+
+            .hero-buttons {
+                justify-content: center;
+                flex-direction: column;
+            }
+
+            .routes {
+                gap: 1rem;
+                font-size: 0.9rem;
+            }
+
+            .newsletter-form {
+                flex-direction: column;
+            }
+
+            .screenshots-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="navbar-content">
+            <div class="brand">
+                <img src="img/favicon.ico" alt="Fredo Games Logo">
+                <h2>Fredo Games</h2>
+            </div>
+            <div class="routes">
+                <a href="#home">Home</a>
+                <a href="#features">Features</a>
+                <a href="#characters">Characters</a>
+                <a href="#download">Download</a>
+                <a href="#">Discord (Soon)</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero" id="home">
+        <div class="hero-content">
+            <h1>Welcome to Longhope</h1>
+            <p>As a newcomer to the seaside town of Longhope, you find yourself surrounded by monsters of urban mythology. Haunted by the feline specter Taro, your journey begins alongside Jamie, the wingless Jersey devil, and Atlas, the little Mothman.</p>
+            <div class="hero-buttons">
+                <a href="https://bit.ly/cunikrushgamesetup" class="btn btn-primary">Download Now</a>
+                <a href="#features" class="btn btn-secondary">Learn More</a>
+            </div>
+        </div>
+        <div class="hero-image">
+            <img src="img/banner.png" alt="Fredo Games Banner">
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section class="features" id="features">
+        <h2 class="section-title">Game Features</h2>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">🎭</div>
+                <h3>Rich Storytelling</h3>
+                <p>Immerse yourself in a captivating narrative filled with mystery, romance, and urban legends.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">👹</div>
+                <h3>Unique Characters</h3>
+                <p>Meet at least FIVE distinct monsters, each with their own personality and backstory.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🎨</div>
+                <h3>Beautiful Art</h3>
+                <p>Experience stunning visuals and character designs that bring the world of Longhope to life.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔄</div>
+                <h3>Regular Updates</h3>
+                <p>New content and chapters released every few months to expand your adventure.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">💖</div>
+                <h3>Multiple Endings</h3>
+                <p>Your choices matter! Experience different outcomes based on your decisions.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🎵</div>
+                <h3>Atmospheric Soundtrack</h3>
+                <p>Original music that perfectly captures the mood of seaside mystery and romance.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Characters -->
+    <section class="characters" id="characters">
+        <h2 class="section-title">Meet the Characters</h2>
+        <div class="characters-grid">
+            <div class="character-card">
+                <div class="character-icon">😺</div>
+                <h3>Taro</h3>
+                <p class="subtitle">The Feline Specter</p>
+                <p>A mysterious cat spirit that haunts you from the very beginning of your journey.</p>
+            </div>
+            <div class="character-card">
+                <div class="character-icon">👿</div>
+                <h3>Jamie</h3>
+                <p class="subtitle">The Wingless Jersey Devil</p>
+                <p>A unique take on the legendary creature, searching for their place in the world.</p>
+            </div>
+            <div class="character-card">
+                <div class="character-icon">🦋</div>
+                <h3>Atlas</h3>
+                <p class="subtitle">The Little Mothman</p>
+                <p>A small but significant presence in Longhope's supernatural community.</p>
+            </div>
+            <div class="character-card">
+                <div class="character-icon">❓</div>
+                <h3>More Coming</h3>
+                <p class="subtitle">Stay Tuned</p>
+                <p>Additional characters will be revealed in future updates!</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Downloads -->
+    <section class="downloads-section" id="download">
+        <h2 class="section-title">Download the Game</h2>
+        <p>Choose your platform and start your adventure in Longhope today!</p>
+        <div class="downloads-grid">
+            <div class="download-card available">
+                <div class="platform-icon">🪟</div>
+                <h3>Windows</h3>
+                <p>Version 1.6</p>
+                <a href="https://bit.ly/cunikrushgamesetup" class="btn btn-primary" style="margin-top: 1rem;">Download</a>
+            </div>
+            <div class="download-card unavailable">
+                <div class="platform-icon">🍎</div>
+                <h3>macOS</h3>
+                <p>Coming Soon</p>
+            </div>
+            <div class="download-card unavailable">
+                <div class="platform-icon">🐧</div>
+                <h3>Linux</h3>
+                <p>Coming Soon</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Screenshots -->
+    <section class="gallery">
+        <h2 class="section-title">Screenshots</h2>
+        <div class="screenshots-grid">
+            <div class="screenshot">
+                <img src="img/screenshot-1.png" alt="Gameplay Screenshot 1">
+            </div>
+            <div class="screenshot">
+                <img src="img/screenshot-2.png" alt="Gameplay Screenshot 2">
+            </div>
+            <div class="screenshot">
+                <img src="img/screenshot-3.png" alt="Gameplay Screenshot 3">
+            </div>
+        </div>
+    </section>
+
+    <!-- Development Logs -->
+    <section class="dev-logs">
+        <h2 class="section-title">Development Updates</h2>
+        <ul class="logs-list">
+            <li class="log-item">
+                <span class="log-icon">🌙</span>
+                <span>Preview of Cold Moon</span>
+            </li>
+            <li class="log-item">
+                <span class="log-icon">📖</span>
+                <span>Fredo Games Chapter 1 Info</span>
+            </li>
+            <li class="log-item">
+                <span class="log-icon">🎙️</span>
+                <span>Casting call - Part 2</span>
+            </li>
+            <li class="log-item">
+                <span class="log-icon">👻</span>
+                <span>Boss Fright update</span>
+            </li>
+        </ul>
+    </section>
+
+    <!-- Newsletter -->
+    <section class="newsletter">
+        <h2>Stay Updated</h2>
+        <p>Subscribe to our newsletter for the latest updates, new releases, and exclusive content!</p>
+        <form class="newsletter-form" onsubmit="event.preventDefault(); alert('Thank you for subscribing!');">
+            <input type="email" placeholder="Enter your email" required>
+            <button type="submit" class="btn btn-primary">Subscribe</button>
+        </form>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="social-links">
+                <a href="#" title="Twitter">🐦</a>
+                <a href="#" title="Discord">💬</a>
+                <a href="#" title="Instagram">📷</a>
+                <a href="#" title="YouTube">🎥</a>
+            </div>
+            <p>Made with ❤️ by Fredo Games</p>
+            <p style="color: rgba(255,255,255,0.5); font-size: 0.9rem; margin-top: 1rem;">© 2024 Fredo Games. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>
